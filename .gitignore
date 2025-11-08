@@ -1,2 +1,21 @@
 # Ignore virtual environment
 .venv/
+
+# Unified model artifacts (keep JSON metadata, exclude binaries)
+unified/models/*.tflite
+unified/models/*.keras
+unified/models/savedmodel/
+!unified/models/*.json
+!unified/models/README.md
+
+# Unified data artifacts (exclude large binary files)
+unified/**/*.npy
+unified/data/rep_set.npy
+
+# Training logs (can be large)
+unified/**/training_log.json
+
+# Evaluation outputs (keep baseline.json for CI)
+unified/eval/*.png
+!unified/eval/baseline.json
+!unified/eval/origin_baseline.json

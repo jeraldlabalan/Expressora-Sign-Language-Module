@@ -1,0 +1,8 @@
+# Additional dependencies for live camera inference
+# Install on top of unified/requirements.txt
+
+# ml-dtypes pinned for TensorFlow 2.15.1 compatibility (prevent mediapipe from upgrading)
+ml-dtypes==0.3.2
+mediapipe>=0.10.9
+opencv-python>=4.9.0
+
