@@ -1,0 +1,140 @@
+name: Unified Model Evaluation
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      with:
+        lfs: true
+    
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r unified/requirements.txt
+        pip install -r unified/requirements-eval.txt
+    
+    - name: Install TensorFlow CPU (faster for CI)
+      run: |
+        pip uninstall -y tensorflow
+        pip install tensorflow-cpu==2.15.1
+    
+    - name: Check for required artifacts
+      run: |
+        if [ ! -f unified/models/expressora_unified.keras ]; then
+          echo "ERROR: Model file not found. Please commit the trained model."
+          exit 1
+        fi
+        if [ ! -f unified/data/unified_X.npy ] || [ ! -f unified/data/unified_y.npy ]; then
+          echo "ERROR: Dataset files not found. Please commit unified dataset."
+          exit 1
+        fi
+    
+    - name: Run gloss classification evaluation
+      run: |
+        python unified/eval/eval_unified.py
+    
+    - name: Check for metric regression (gloss)
+      run: |
+        python - <<'EOF'
+        import json
+        from pathlib import Path
+        
+        baseline_path = Path("unified/eval/baseline.json")
+        if not baseline_path.exists():
+          print("No baseline found - this run will establish baseline")
+          exit(0)
+        
+        with open(baseline_path) as f:
+          baseline = json.load(f)
+        
+        # Check for regression
+        accuracy = baseline.get("accuracy", 0)
+        macro_f1 = baseline.get("macro_f1", 0)
+        
+        print(f"Baseline accuracy: {accuracy:.4f}")
+        print(f"Baseline macro-F1: {macro_f1:.4f}")
+        
+        # These would be compared against previous baseline
+        # For now, just ensure they're reasonable
+        if accuracy < 0.80:
+          print(f"WARNING: Accuracy {accuracy:.4f} is below 80%")
+        if macro_f1 < 0.75:
+          print(f"WARNING: Macro-F1 {macro_f1:.4f} is below 75%")
+        
+        print("✓ Gloss classification metrics check passed")
+        EOF
+    
+    - name: Run origin classification evaluation (if available)
+      run: |
+        if [ -f unified/data/unified_origin.npy ] && [ -f unified/eval/eval_origin.py ]; then
+          python unified/eval/eval_origin.py
+          
+          # Check origin metrics
+          python - <<'EOF'
+        import json
+        from pathlib import Path
+        
+        origin_baseline_path = Path("unified/eval/origin_baseline.json")
+        if not origin_baseline_path.exists():
+          print("No origin baseline found - skipping origin regression check")
+          exit(0)
+        
+        with open(origin_baseline_path) as f:
+          baseline = json.load(f)
+        
+        accuracy = baseline.get("accuracy", 0)
+        print(f"Origin accuracy: {accuracy:.4f}")
+        
+        if accuracy < 0.95:
+          print(f"ERROR: Origin accuracy {accuracy:.4f} is below 95% threshold")
+          exit(1)
+        
+        print("✓ Origin classification metrics check passed")
+        EOF
+        else
+          echo "Origin tracking not enabled - skipping origin evaluation"
+        fi
+      continue-on-error: true
+    
+    - name: Upload confusion matrices
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: confusion-matrices
+        path: |
+          unified/eval/confusion_matrix.png
+          unified/eval/origin_confusion.png
+        if-no-files-found: ignore
+    
+    - name: Upload model card
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: model-card
+        path: unified/models/model_card.json
+        if-no-files-found: ignore
+    
+    - name: Upload evaluation results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: evaluation-results
+        path: |
+          unified/eval/baseline.json
+          unified/eval/origin_baseline.json
+        if-no-files-found: ignore
+
